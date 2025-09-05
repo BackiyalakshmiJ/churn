@@ -1,64 +1,63 @@
+# app.py
 import streamlit as st
 import pandas as pd
-import numpy as np
 import pickle
 from pathlib import Path
 
 # ---------------- CONFIG ----------------
 BASE_DIR = Path(__file__).parent
-MODEL_PATH = BASE_DIR / "catboost_best_model (1).pkl"   # exact file name
-PREPROCESSOR_PATH = BASE_DIR / "preprocessing_tools.pkl"
+MODEL_PATH = BASE_DIR / "catboost_best_model.pkl"
+SCALER_PATH = BASE_DIR / "scaler.pkl"
+ENCODERS_PATH = BASE_DIR / "label_encoders.pkl"
 DATA_PATH = BASE_DIR / "TelcoChurn_Preprocessed.csv"
 
 APP_TITLE = "📞 Telco Customer Churn Prediction"
 PRIMARY_COLOR = "#2E86C1"
 
+
 # ---------------- LOAD ARTIFACTS ----------------
 @st.cache_resource
-def load_model_and_preprocessor():
-    """Load CatBoost model and preprocessing tools."""
-    # ---- Load Model ----
-    with open(MODEL_PATH, "rb") as f:
-        model = pickle.load(f)
+def load_artifacts():
+    """Load CatBoost model, scaler, and label encoders."""
+    try:
+        with open(SCALER_PATH, "rb") as f:
+            scaler_dict = pickle.load(f)
+            scaler = scaler_dict["scaler"]
+            numeric_cols = scaler_dict["numeric_cols"]
 
-    # ---- Load Preprocessor ----
-    with open(PREPROCESSOR_PATH, "rb") as f:
-        preprocessor = pickle.load(f)
+        with open(ENCODERS_PATH, "rb") as f:
+            label_encoders = pickle.load(f)
 
-    return model, preprocessor
+        with open(MODEL_PATH, "rb") as f:
+            model = pickle.load(f)
+
+        raw_data = pd.read_csv(DATA_PATH)
+
+        return model, scaler, numeric_cols, label_encoders, raw_data
+
+    except FileNotFoundError as e:
+        st.error(f"❌ Missing file: {e.filename}. Please make sure all required files are in the same folder.")
+        st.stop()
 
 
-@st.cache_data
-def load_raw_data():
-    """Load dataset before encoding and scaling."""
-    return pd.read_csv(DATA_PATH)
+def preprocess_input(input_df, scaler, numeric_cols, label_encoders):
+    """Encode categoricals and scale numerics."""
+    df = input_df.copy()
 
+    # Encode categorical variables
+    for col, le in label_encoders.items():
+        if col in df.columns:
+            val = df[col].iloc[0]
+            # Handle unseen categories gracefully
+            if val not in le.classes_:
+                le.classes_ = list(le.classes_) + [val]
+            df[col] = le.transform(df[col])
 
-def apply_preprocessing(preprocessor, input_df):
-    """Apply preprocessing depending on how it was saved."""
-    # Case 1: it's a full pipeline
-    if hasattr(preprocessor, "transform"):
-        return preprocessor.transform(input_df)
+    # Scale numeric columns
+    if numeric_cols:
+        df[numeric_cols] = scaler.transform(df[numeric_cols])
 
-    # Case 2: it's a dict of objects
-    if isinstance(preprocessor, dict):
-        df = input_df.copy()
-
-        # If encoder exists
-        if "encoder" in preprocessor and hasattr(preprocessor["encoder"], "transform"):
-            df = pd.DataFrame(
-                preprocessor["encoder"].transform(df),
-                columns=preprocessor["encoder"].get_feature_names_out(),
-            )
-
-        # If scaler exists
-        if "scaler" in preprocessor and hasattr(preprocessor["scaler"], "transform"):
-            numeric_cols = preprocessor.get("numeric_cols", [])
-            df[numeric_cols] = preprocessor["scaler"].transform(df[numeric_cols])
-
-        return df
-
-    raise ValueError("❌ Preprocessor format not recognized")
+    return df
 
 
 # ---------------- APP ----------------
@@ -75,12 +74,7 @@ def main():
     st.markdown("---")
 
     # ---- Load artifacts ----
-    try:
-        model, preprocessor = load_model_and_preprocessor()
-        raw_data = load_raw_data()
-    except Exception as e:
-        st.error(f"Failed to load files: {e}")
-        st.stop()
+    model, scaler, numeric_cols, label_encoders, raw_data = load_artifacts()
 
     # ---- Sidebar ----
     with st.sidebar:
@@ -109,11 +103,12 @@ def main():
     # ---- Predict Button ----
     if st.button("🔮 Predict Churn", use_container_width=True):
         try:
-            # Convert to DataFrame
             input_df = pd.DataFrame([input_data])
+            st.write("🔍 Input DataFrame", input_df)
 
-            # Apply preprocessing (handles both pipeline & dict)
-            processed = apply_preprocessing(preprocessor, input_df)
+            # Preprocess
+            processed = preprocess_input(input_df, scaler, numeric_cols, label_encoders)
+            st.write("🔍 Processed DataFrame", processed)
 
             # Prediction
             pred = model.predict(processed)[0]
@@ -137,4 +132,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
