@@ -9,7 +9,7 @@ BASE_DIR = Path(__file__).parent
 MODEL_PATH = BASE_DIR / "catboost_best_model.pkl"
 SCALER_PATH = BASE_DIR / "scaler.pkl"
 ENCODERS_PATH = BASE_DIR / "label_encoders.pkl"
-DATA_PATH = BASE_DIR / "TelcoChurn_Preprocessed.csv"
+DATA_PATH = BASE_DIR / "preprocessed_dataset.csv"   # <-- raw dataset
 
 APP_TITLE = "📞 Telco Customer Churn Prediction"
 PRIMARY_COLOR = "#2E86C1"
@@ -18,26 +18,21 @@ PRIMARY_COLOR = "#2E86C1"
 # ---------------- LOAD ARTIFACTS ----------------
 @st.cache_resource
 def load_artifacts():
-    """Load CatBoost model, scaler, and label encoders."""
-    try:
-        with open(SCALER_PATH, "rb") as f:
-            scaler_dict = pickle.load(f)
-            scaler = scaler_dict["scaler"]
-            numeric_cols = scaler_dict["numeric_cols"]
+    """Load model, scaler, label encoders, and raw data."""
+    with open(MODEL_PATH, "rb") as f:
+        model = pickle.load(f)
 
-        with open(ENCODERS_PATH, "rb") as f:
-            label_encoders = pickle.load(f)
+    with open(SCALER_PATH, "rb") as f:
+        scaler_dict = pickle.load(f)
+        scaler = scaler_dict["scaler"]
+        numeric_cols = scaler_dict["numeric_cols"]
 
-        with open(MODEL_PATH, "rb") as f:
-            model = pickle.load(f)
+    with open(ENCODERS_PATH, "rb") as f:
+        label_encoders = pickle.load(f)
 
-        raw_data = pd.read_csv(DATA_PATH)
+    raw_data = pd.read_csv(DATA_PATH)
 
-        return model, scaler, numeric_cols, label_encoders, raw_data
-
-    except FileNotFoundError as e:
-        st.error(f"❌ Missing file: {e.filename}. Please make sure all required files are in the same folder.")
-        st.stop()
+    return model, scaler, numeric_cols, label_encoders, raw_data
 
 
 def preprocess_input(input_df, scaler, numeric_cols, label_encoders):
@@ -74,7 +69,11 @@ def main():
     st.markdown("---")
 
     # ---- Load artifacts ----
-    model, scaler, numeric_cols, label_encoders, raw_data = load_artifacts()
+    try:
+        model, scaler, numeric_cols, label_encoders, raw_data = load_artifacts()
+    except Exception as e:
+        st.error(f"❌ Failed to load files: {e}")
+        st.stop()
 
     # ---- Sidebar ----
     with st.sidebar:
