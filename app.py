@@ -9,7 +9,7 @@ BASE_DIR = Path(__file__).parent
 MODEL_PATH = BASE_DIR / "catboost_best_model.pkl"
 SCALER_PATH = BASE_DIR / "scaler.pkl"
 ENCODERS_PATH = BASE_DIR / "label_encoders.pkl"
-DATA_PATH = BASE_DIR / "TeloChurn_Preprocessed.csv"   # <-- raw dataset
+DATA_PATH = BASE_DIR / "TelcoChurn_Preprocessed.csv"   # <-- raw dataset
 
 APP_TITLE = "📞 Telco Customer Churn Prediction"
 PRIMARY_COLOR = "#2E86C1"
@@ -131,4 +131,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
