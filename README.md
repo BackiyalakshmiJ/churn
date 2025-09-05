@@ -7,7 +7,7 @@ This is a **Streamlit web app** for predicting customer churn using a CatBoost m
 ## 🛠️ Files
 
 - `app.py` : Streamlit app code.
-- `catboost_best_model (1).pkl` : Trained CatBoost model.
+- `catboost_best_model.pkl` : Trained CatBoost model.
 - `preprocessing_tools.pkl` : Preprocessing pipeline (scaling + encoding).
 - `TelcoChurn_Preprocessed.csv` : Dataset before scaling/encoding.
 - `TelcoChurn_Processed.csv` : Dataset after scaling/encoding.
@@ -40,3 +40,4 @@ This is a **Streamlit web app** for predicting customer churn using a CatBoost m
 2. Fill in customer details in the form.  
 3. Click **Predict Churn**.  
 4. View results.
+
