@@ -120,8 +120,9 @@ def main():
         st.subheader("Enter Customer Details")
         input_data = {}
         with st.form("customer_form"):
-            cat_cols = [c for c in raw_data.columns if raw_data[c].dtype == "object"]
-            num_cols = [c for c in raw_data.columns if raw_data[c].dtype != "object"]
+            # Exclude target variable from feature lists
+            cat_cols = [c for c in raw_data.columns if raw_data[c].dtype == "object" and c != TARGET_COL]
+            num_cols = [c for c in raw_data.columns if raw_data[c].dtype != "object" and c != TARGET_COL]
 
             st.markdown("#### 🧑 Demographics")
             c1, c2, c3 = st.columns(3)
