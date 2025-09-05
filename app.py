@@ -1,8 +1,9 @@
-# app.py
+# app_advanced.py
 import streamlit as st
 import pandas as pd
 import pickle
 from pathlib import Path
+import plotly.graph_objects as go
 
 # ---------------- CONFIG ----------------
 BASE_DIR = Path(__file__).parent
@@ -17,7 +18,6 @@ PRIMARY_COLOR = "#2E86C1"
 # ---------------- LOAD ARTIFACTS ----------------
 @st.cache_resource
 def load_artifacts():
-    """Load model, scaler, label encoders, and raw data."""
     with open(MODEL_PATH, "rb") as f:
         model = pickle.load(f)
 
@@ -34,7 +34,6 @@ def load_artifacts():
 
 
 def preprocess_input(input_df, scaler, numeric_cols, label_encoders):
-    """Encode categoricals and scale numerics."""
     df = input_df.copy()
     for col, le in label_encoders.items():
         if col in df.columns:
@@ -47,6 +46,34 @@ def preprocess_input(input_df, scaler, numeric_cols, label_encoders):
     return df
 
 
+def plot_gauge(prob):
+    """Plot gauge chart for churn probability."""
+    fig = go.Figure(
+        go.Indicator(
+            mode="gauge+number+delta",
+            value=prob * 100,
+            delta={"reference": 50},
+            gauge={
+                "axis": {"range": [0, 100]},
+                "bar": {"color": PRIMARY_COLOR},
+                "steps": [
+                    {"range": [0, 30], "color": "lightgreen"},
+                    {"range": [30, 70], "color": "gold"},
+                    {"range": [70, 100], "color": "tomato"},
+                ],
+                "threshold": {
+                    "line": {"color": "red", "width": 4},
+                    "thickness": 0.75,
+                    "value": prob * 100,
+                },
+            },
+            title={"text": "Churn Probability (%)"},
+        )
+    )
+    fig.update_layout(height=300, margin=dict(t=0, b=0, l=0, r=0))
+    return fig
+
+
 # ---------------- APP ----------------
 def main():
     st.set_page_config(page_title="Churn Prediction", layout="wide", page_icon="📊")
@@ -54,10 +81,12 @@ def main():
     # ---- HEADER ----
     st.markdown(
         f"""
-        <div style="text-align:center; padding:15px; border-radius:10px;
-                    background-color:{PRIMARY_COLOR}; color:white;">
+        <div style="text-align:center; padding:20px; border-radius:12px;
+                    background:linear-gradient(90deg, {PRIMARY_COLOR}, #154360); color:white;">
             <h1>{APP_TITLE}</h1>
-            <p style="font-size:18px;">AI-powered tool to estimate telecom customer churn</p>
+            <p style="font-size:18px; margin-top:-10px;">
+                Advanced AI-powered dashboard to estimate telecom customer churn
+            </p>
         </div>
         """,
         unsafe_allow_html=True,
@@ -76,69 +105,84 @@ def main():
         st.header("ℹ️ About the App")
         st.success("Predicts whether a telecom customer will churn using ML (CatBoost).")
         st.warning("⚠️ Demo app — not for business decisions.")
-
         st.markdown("### 📊 Dataset Info")
         st.info(f"Rows: {raw_data.shape[0]} | Columns: {raw_data.shape[1]}")
         st.markdown("### ⚙️ Model Details")
         st.text("• Algorithm: CatBoost Classifier\n• Encoders: LabelEncoder\n• Scaling: StandardScaler")
 
-    # ---- INPUT SECTION ----
-    st.markdown("### 📋 Enter Customer Details")
-    st.markdown("Fill in customer details below for churn prediction:")
+    # ---- TABS ----
+    tabs = st.tabs(["📋 Input Details", "🔮 Prediction Result", "📈 Model Insights"])
 
-    input_data = {}
-    with st.form("customer_form"):
-        cols = st.columns(3)
-        for i, col in enumerate(raw_data.columns):
-            with cols[i % 3]:
-                if raw_data[col].dtype == "object":
-                    val = st.selectbox(col, options=sorted(raw_data[col].dropna().unique()))
-                else:
-                    val = st.number_input(
+    # ---- TAB 1: INPUT ----
+    with tabs[0]:
+        st.subheader("Enter Customer Details")
+        input_data = {}
+        with st.form("customer_form"):
+            cat_cols = [c for c in raw_data.columns if raw_data[c].dtype == "object"]
+            num_cols = [c for c in raw_data.columns if raw_data[c].dtype != "object"]
+
+            st.markdown("#### 🧑 Demographics")
+            c1, c2, c3 = st.columns(3)
+            for i, col in enumerate(cat_cols[:5]):  # first few categorical
+                with [c1, c2, c3][i % 3]:
+                    input_data[col] = st.selectbox(col, options=sorted(raw_data[col].unique()))
+
+            st.markdown("#### 📞 Services & Contract")
+            c4, c5, c6 = st.columns(3)
+            for i, col in enumerate(cat_cols[5:]):  # remaining categorical
+                with [c4, c5, c6][i % 3]:
+                    input_data[col] = st.selectbox(col, options=sorted(raw_data[col].unique()))
+
+            st.markdown("#### 💲 Numeric Features")
+            c7, c8, c9 = st.columns(3)
+            for i, col in enumerate(num_cols):
+                with [c7, c8, c9][i % 3]:
+                    input_data[col] = st.number_input(
                         col,
-                        value=float(raw_data[col].dropna().median()),
+                        value=float(raw_data[col].median()),
                         step=1.0,
                     )
-                input_data[col] = val
 
-        submitted = st.form_submit_button("🔮 Predict Churn")
+            submitted = st.form_submit_button("🚀 Run Prediction")
 
-    # ---- PREDICTION ----
-    if submitted:
-        try:
-            input_df = pd.DataFrame([input_data])
-            processed = preprocess_input(input_df, scaler, numeric_cols, label_encoders)
+    # ---- TAB 2: PREDICTION ----
+    with tabs[1]:
+        if "input_data" in locals() and submitted:
+            try:
+                input_df = pd.DataFrame([input_data])
+                processed = preprocess_input(input_df, scaler, numeric_cols, label_encoders)
 
-            pred = model.predict(processed)[0]
-            prob = model.predict_proba(processed)[0][1] if hasattr(model, "predict_proba") else None
+                pred = model.predict(processed)[0]
+                prob = model.predict_proba(processed)[0][1] if hasattr(model, "predict_proba") else None
 
-            # ---- RESULT SECTION ----
-            st.markdown("## ✅ Prediction Result")
-            col1, col2 = st.columns([2, 1])
+                st.subheader("Prediction Outcome")
 
-            with col1:
                 if pred == 1:
                     st.error("🚨 This customer is **likely to churn**.")
                 else:
                     st.success("💚 This customer is **not likely to churn**.")
 
                 if prob is not None:
-                    st.markdown(
-                        f"""
-                        <div style="padding:10px; border:2px solid {PRIMARY_COLOR};
-                                    border-radius:8px; text-align:center;">
-                            <h3>Churn Probability</h3>
-                            <h2 style="color:{PRIMARY_COLOR};">{prob:.2%}</h2>
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
+                    st.plotly_chart(plot_gauge(prob), use_container_width=True)
+                    st.metric("Churn Probability", f"{prob:.2%}")
 
-            with col2:
-                if prob is not None:
-                    st.metric(label="📊 Churn Probability", value=f"{prob:.2%}")
-        except Exception as e:
-            st.error(f"Prediction failed: {e}")
+            except Exception as e:
+                st.error(f"Prediction failed: {e}")
+        else:
+            st.info("⚡ Fill customer details in the **Input tab** and run prediction.")
+
+    # ---- TAB 3: INSIGHTS ----
+    with tabs[2]:
+        st.subheader("Model Insights")
+        st.write(
+            """
+            🔍 In this demo version:
+            - CatBoost classifier is trained on telecom churn dataset.
+            - Preprocessing uses **Label Encoding** for categoricals & **StandardScaler** for numerics.
+            - Prediction is binary (Churn = Yes/No) with a probability score.
+            """
+        )
+        st.info("ℹ️ Feature importance visualization can be added here if available.")
 
 
 if __name__ == "__main__":
