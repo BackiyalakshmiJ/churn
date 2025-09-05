@@ -1,9 +1,13 @@
-# app_advanced.py
+# app_ultra.py
 import streamlit as st
 import pandas as pd
 import pickle
 from pathlib import Path
 import plotly.graph_objects as go
+import shap
+import matplotlib.pyplot as plt
+import base64
+from io import BytesIO
 
 # ---------------- CONFIG ----------------
 BASE_DIR = Path(__file__).parent
@@ -74,9 +78,51 @@ def plot_gauge(prob):
     return fig
 
 
+def shap_explain(model, processed, feature_names):
+    explainer = shap.TreeExplainer(model)
+    shap_values = explainer.shap_values(processed)
+    st.write("### 🔍 Local Explanation (Why this prediction?)")
+    fig, ax = plt.subplots()
+    shap.force_plot(
+        explainer.expected_value,
+        shap_values[0, :],
+        processed.iloc[0, :],
+        matplotlib=True,
+        show=False
+    )
+    st.pyplot(fig)
+
+    st.write("### 🌍 Global Feature Importance")
+    fig2, ax2 = plt.subplots()
+    shap.summary_plot(shap_values, processed, feature_names=feature_names, show=False)
+    st.pyplot(fig2)
+
+
+def download_link(df, filename="prediction_report.csv"):
+    """Generate download link for dataframe."""
+    csv = df.to_csv(index=False)
+    b64 = base64.b64encode(csv.encode()).decode()
+    return f'<a href="data:file/csv;base64,{b64}" download="{filename}">📥 Download Report</a>'
+
+
 # ---------------- APP ----------------
 def main():
     st.set_page_config(page_title="Churn Prediction", layout="wide", page_icon="📊")
+
+    # ---- Custom CSS ----
+    st.markdown(
+        """
+        <style>
+        .stMetric {
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+            padding: 15px;
+            backdrop-filter: blur(10px);
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
     # ---- HEADER ----
     st.markdown(
@@ -85,7 +131,7 @@ def main():
                     background:linear-gradient(90deg, {PRIMARY_COLOR}, #154360); color:white;">
             <h1>{APP_TITLE}</h1>
             <p style="font-size:18px; margin-top:-10px;">
-                Advanced AI-powered dashboard to estimate telecom customer churn
+                Ultra-Advanced AI-powered churn prediction with explainability
             </p>
         </div>
         """,
@@ -95,95 +141,4 @@ def main():
 
     # ---- Load artifacts ----
     try:
-        model, scaler, numeric_cols, label_encoders, raw_data = load_artifacts()
-    except Exception as e:
-        st.error(f"❌ Failed to load files: {e}")
-        st.stop()
-
-    # ---- SIDEBAR ----
-    with st.sidebar:
-        st.header("ℹ️ About the App")
-        st.success("Predicts whether a telecom customer will churn using ML (CatBoost).")
-        st.warning("⚠️ Demo app — not for business decisions.")
-        st.markdown("### 📊 Dataset Info")
-        st.info(f"Rows: {raw_data.shape[0]} | Columns: {raw_data.shape[1]}")
-        st.markdown("### ⚙️ Model Details")
-        st.text("• Algorithm: CatBoost Classifier\n• Encoders: LabelEncoder\n• Scaling: StandardScaler")
-
-    # ---- TABS ----
-    tabs = st.tabs(["📋 Input Details", "🔮 Prediction Result", "📈 Model Insights"])
-
-    # ---- TAB 1: INPUT ----
-    with tabs[0]:
-        st.subheader("Enter Customer Details")
-        input_data = {}
-        with st.form("customer_form"):
-            cat_cols = [c for c in raw_data.columns if raw_data[c].dtype == "object"]
-            num_cols = [c for c in raw_data.columns if raw_data[c].dtype != "object"]
-
-            st.markdown("#### 🧑 Demographics")
-            c1, c2, c3 = st.columns(3)
-            for i, col in enumerate(cat_cols[:5]):  # first few categorical
-                with [c1, c2, c3][i % 3]:
-                    input_data[col] = st.selectbox(col, options=sorted(raw_data[col].unique()))
-
-            st.markdown("#### 📞 Services & Contract")
-            c4, c5, c6 = st.columns(3)
-            for i, col in enumerate(cat_cols[5:]):  # remaining categorical
-                with [c4, c5, c6][i % 3]:
-                    input_data[col] = st.selectbox(col, options=sorted(raw_data[col].unique()))
-
-            st.markdown("#### 💲 Numeric Features")
-            c7, c8, c9 = st.columns(3)
-            for i, col in enumerate(num_cols):
-                with [c7, c8, c9][i % 3]:
-                    input_data[col] = st.number_input(
-                        col,
-                        value=float(raw_data[col].median()),
-                        step=1.0,
-                    )
-
-            submitted = st.form_submit_button("🚀 Run Prediction")
-
-    # ---- TAB 2: PREDICTION ----
-    with tabs[1]:
-        if "input_data" in locals() and submitted:
-            try:
-                input_df = pd.DataFrame([input_data])
-                processed = preprocess_input(input_df, scaler, numeric_cols, label_encoders)
-
-                pred = model.predict(processed)[0]
-                prob = model.predict_proba(processed)[0][1] if hasattr(model, "predict_proba") else None
-
-                st.subheader("Prediction Outcome")
-
-                if pred == 1:
-                    st.error("🚨 This customer is **likely to churn**.")
-                else:
-                    st.success("💚 This customer is **not likely to churn**.")
-
-                if prob is not None:
-                    st.plotly_chart(plot_gauge(prob), use_container_width=True)
-                    st.metric("Churn Probability", f"{prob:.2%}")
-
-            except Exception as e:
-                st.error(f"Prediction failed: {e}")
-        else:
-            st.info("⚡ Fill customer details in the **Input tab** and run prediction.")
-
-    # ---- TAB 3: INSIGHTS ----
-    with tabs[2]:
-        st.subheader("Model Insights")
-        st.write(
-            """
-            🔍 In this demo version:
-            - CatBoost classifier is trained on telecom churn dataset.
-            - Preprocessing uses **Label Encoding** for categoricals & **StandardScaler** for numerics.
-            - Prediction is binary (Churn = Yes/No) with a probability score.
-            """
-        )
-        st.info("ℹ️ Feature importance visualization can be added here if available.")
-
-
-if __name__ == "__main__":
-    main()
+        model, scaler, nume
