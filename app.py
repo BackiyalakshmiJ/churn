@@ -15,7 +15,7 @@ DATA_PATH = BASE_DIR / "TelcoChurn_Preprocessed.csv"
 
 APP_TITLE = "📞 Telco Customer Churn Prediction"
 PRIMARY_COLOR = "#2E86C1"
-TARGET_COL = "Churn"   # <-- your target variable
+TARGET_COL = "Churn"
 
 # ---------------- LOAD ARTIFACTS ----------------
 @st.cache_resource
@@ -36,7 +36,6 @@ def load_artifacts():
 
 
 def preprocess_input(input_df, scaler, numeric_cols, label_encoders):
-    """Encode categoricals and scale numerics for prediction."""
     df = input_df.copy()
     for col, le in label_encoders.items():
         if col in df.columns:
@@ -50,7 +49,7 @@ def preprocess_input(input_df, scaler, numeric_cols, label_encoders):
 
 
 def plot_gauge(prob):
-    """Gauge chart for churn probability."""
+    """Plot gauge chart for churn probability."""
     fig = go.Figure(
         go.Indicator(
             mode="gauge+number+delta",
@@ -121,18 +120,18 @@ def main():
         st.subheader("Enter Customer Details")
         input_data = {}
         with st.form("customer_form"):
-            cat_cols = [c for c in raw_data.columns if raw_data[c].dtype == "object" and c != TARGET_COL]
+            cat_cols = [c for c in raw_data.columns if raw_data[c].dtype == "object"]
             num_cols = [c for c in raw_data.columns if raw_data[c].dtype != "object"]
 
             st.markdown("#### 🧑 Demographics")
             c1, c2, c3 = st.columns(3)
-            for i, col in enumerate(cat_cols[:5]):  # first few categorical
+            for i, col in enumerate(cat_cols[:5]):
                 with [c1, c2, c3][i % 3]:
                     input_data[col] = st.selectbox(col, options=sorted(raw_data[col].unique()))
 
             st.markdown("#### 📞 Services & Contract")
             c4, c5, c6 = st.columns(3)
-            for i, col in enumerate(cat_cols[5:]):  # remaining categorical
+            for i, col in enumerate(cat_cols[5:]):
                 with [c4, c5, c6][i % 3]:
                     input_data[col] = st.selectbox(col, options=sorted(raw_data[col].unique()))
 
@@ -192,10 +191,14 @@ def main():
                 options=[c for c in raw_data.columns if raw_data[c].dtype == "object" and c != TARGET_COL],
             )
             if cat_for_view:
-                avg_churn = raw_data.groupby(cat_for_view)[TARGET_COL].mean().reset_index()
-                avg_churn[TARGET_COL] = avg_churn[TARGET_COL] * 100
+                # ✅ Convert churn into numeric for analysis
+                data_insights = raw_data.copy()
+                data_insights[TARGET_COL] = data_insights[TARGET_COL].map({"Yes": 1, "No": 0})
 
-                st.write("### 📊 Average Churn Rate by", cat_for_view)
+                avg_churn = data_insights.groupby(cat_for_view)[TARGET_COL].mean().reset_index()
+                avg_churn[TARGET_COL] = avg_churn[TARGET_COL] * 100  # percentage
+
+                st.write(f"### 📊 Average Churn Rate by {cat_for_view}")
                 st.dataframe(avg_churn, use_container_width=True)
 
                 fig = px.bar(
